@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TANK WARFARE 12v12</title>
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #0b0f19; font-family: Arial, sans-serif; }
+        
+        #gameCanvas { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; }
+
+        #mainMenu {
+            position: absolute; inset: 0; z-index: 9999;
+            background: #0b0f19;
+            display: flex; align-items: center; justify-content: center;
+            padding: 15px;
+        }
+        .menu-box {
+            background: #111827;
+            border: 2px solid #22c55e;
+            border-radius: 16px;
+            width: 100%; max-width: 440px;
+            padding: 20px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+        }
+        h1 { color: #22c55e; font-size: 22px; margin: 0 0 5px 0; text-transform: uppercase; font-style: italic; }
+        p { color: #94a3b8; font-size: 11px; margin-bottom: 15px; }
+        
+        .tank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        .tank-option {
+            background: #1f2937; border: 2px solid #374151; color: white;
+            padding: 10px; border-radius: 10px; cursor: pointer; text-align: left;
+            position: relative; transition: 0.2s;
+        }
+        .tank-option.selected { border-color: #22c55e; background: rgba(34, 197, 94, 0.2); }
+        .tank-option.locked { opacity: 0.4; cursor: not-allowed; border-color: #1f2937; }
+        
+        .start-btn {
+            background: #22c55e; color: #000; font-weight: bold; font-size: 16px;
+            width: 100%; padding: 14px; border: none; border-radius: 10px; cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        #gameHUD { position: absolute; top: 10px; left: 10px; right: 10px; display: none; z-index: 50; pointer-events: none; justify-content: space-between; align-items: center; color: white; font-weight: bold; font-size: 12px; }
+        .hud-card { background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; padding: 6px 12px; border-radius: 8px; }
+
+        #touchControls { position: absolute; inset: 0; z-index: 60; pointer-events: none; display: none; }
+        .joystick { position: absolute; bottom: 20px; width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.2); pointer-events: auto; touch-action: none; }
+        .knob { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: rgba(34,197,94,0.6); border: 2px solid white; transform: translate(-50%, -50%); top: 50%; left: 50%; pointer-events: none; }
+
+        #respawnOverlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; color: #ef4444; font-size: 24px; font-weight: bold; }
+        
+        /* Pantalla de Victoria */
+        #winOverlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; text-align: center; padding: 20px; }
+        .win-box { background: #111827; border: 2px solid #eab308; border-radius: 20px; padding: 30px; max-width: 400px; width: 100%; box-shadow: 0 0 30px rgba(234, 179, 8, 0.4); }
+
+        /* Pantalla de Derrota (You Lose) */
+        #loseOverlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.92); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; text-align: center; padding: 20px; }
+        .lose-box { background: #111827; border: 2px solid #ef4444; border-radius: 20px; padding: 30px; max-width: 400px; width: 100%; box-shadow: 0 0 30px rgba(239, 68, 68, 0.4); }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- MENÚ PRINCIPAL -->
+    <div id="mainMenu">
+        <div class="menu-box">
+            <h1>TANK WARFARE 12v12</h1>
+            <p id="menuSubtitle">Nivel 1 - Selecciona tu tanque</p>
+
+            <div style="background: #030712; border-radius: 10px; padding: 10px; margin-bottom: 15px; border: 1px solid #1f2937;">
+                <canvas id="previewCanvas" width="180" height="100" style="display: block; margin: 0 auto;"></canvas>
+                <div id="tankTitle" style="color: #22c55e; font-weight: bold; margin-top: 5px; font-size: 13px;">M1 ABRAMS</div>
+            </div>
+
+            <div class="tank-grid">
+                <button class="tank-option selected" id="btn0" onclick="chooseTank(0)">
+                    <div style="font-weight: bold; font-size: 11px;">M1 Abrams</div>
+                    <div style="font-size: 9px; color: #22c55e;">Desbloqueado</div>
+                </button>
+                <button class="tank-option locked" id="btn1" onclick="chooseTank(1)">
+                    <div style="font-weight: bold; font-size: 11px;">T-90 Vanguard 🔒</div>
+                    <div style="font-size: 9px; color: #eab308;">Req. Nivel 2</div>
+                </button>
+                <button class="tank-option locked" id="btn2" onclick="chooseTank(2)">
+                    <div style="font-weight: bold; font-size: 11px;">Leopard 2A7 🔒</div>
+                    <div style="font-size: 9px; color: #eab308;">Req. Nivel 3</div>
+                </button>
+                <button class="tank-option locked" id="btn3" onclick="chooseTank(3)">
+                    <div style="font-weight: bold; font-size: 11px;">Challenger 2 🔒</div>
+                    <div style="font-size: 9px; color: #eab308;">Req. Nivel 4</div>
+                </button>
+            </div>
+
+            <button class="start-btn" onclick="initGame()">¡Iniciar Batalla!</button>
+        </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="gameHUD">
+        <div class="hud-card">Aliados: <span id="allyCount" style="color:#3b82f6;">12</span> | Enemigos: <span id="enemyCount" style="color:#ef4444;">12</span></div>
+        <div class="hud-card">Nivel: <span id="playerLvl" style="color:#eab308;">1</span> | XP: <span id="playerXp" style="color:#38bdf8;">0</span></div>
+        <div class="hud-card">Kills: <span id="playerKills" style="color:#22c55e;">0</span> | HP: <span id="playerHp" style="color:#22c55e;">100</span></div>
+    </div>
+
+    <div id="touchControls">
+        <div id="moveZone" class="joystick" style="left: 20px;"><div id="moveKnob" class="knob"></div></div>
+        <div id="aimZone" class="joystick" style="right: 20px;"><div id="aimKnob" class="knob" style="background: rgba(239,68,68,0.6);"></div></div>
+    </div>
+
+    <div id="respawnOverlay">
+        <div>¡TANQUE DESTRUIDO!</div>
+        <div id="respawnTimer" style="font-size: 45px; color: #22c55e; margin-top: 10px;">3</div>
+    </div>
+
+    <!-- PANTALLA DE VICTORIA -->
+    <div id="winOverlay">
+        <div class="win-box">
+            <div style="font-size: 40px; margin-bottom: 5px;">🏆</div>
+            <h2 style="color: #eab308; font-size: 26px; margin: 0 0 10px 0; text-transform: uppercase; font-style: italic;">¡YOU WON!</h2>
+            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">Fuerzas enemigas erradicadas.</p>
+            
+            <div style="background: #1f2937; padding: 12px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; text-align: left;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span>Kills totales:</span> <strong id="winKills" style="color: #22c55e;">0</strong></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span>XP Ganada:</span> <strong id="winXp" style="color: #38bdf8;">+0</strong></div>
+                <div style="display: flex; justify-content: space-between;"><span>Nivel Alcanzado:</span> <strong id="winLevel" style="color: #eab308;">1</strong></div>
+            </div>
+
+            <button class="start-btn" onclick="nextMatch()">Siguiente Batalla</button>
+        </div>
+    </div>
+
+    <!-- PANTALLA DE DERROTA (YOU LOSE) -->
+    <div id="loseOverlay">
+        <div class="lose-box">
+            <div style="font-size: 40px; margin-bottom: 5px;">❌ 😢</div>
+            <h2 style="color: #ef4444; font-size: 26px; margin: 0 0 10px 0; text-transform: uppercase; font-style: italic;">YOU LOSE</h2>
+            <p style="color: #94a3b8; font-size: 14px; margin-bottom: 20px; font-weight: bold;">Te moriste xd</p>
+            
+            <div style="background: #1f2937; padding: 12px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; text-align: left;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span>Tus Kills:</span> <strong id="loseKills" style="color: #22c55e;">0</strong></div>
+                <div style="display: flex; justify-content: space-between;"><span>Estado:</span> <strong style="color: #ef4444;">Derrota Total</strong></div>
+            </div>
+
+            <button class="start-btn" onclick="nextMatch()" style="background: #ef4444; color: white;">Reintentar</button>
+        </div>
+    </div>
+
+    <script>
+        const TANK_PRESETS = [
+            { name: "M1 Abrams", speed: 4.2, armor: 100, color: "#3b82f6", minLvl: 1 },
+            { name: "T-90 Vanguard", speed: 5.8, armor: 60, color: "#06b6d4", minLvl: 2 },
+            { name: "Leopard 2A7", speed: 5.0, armor: 80, color: "#10b981", minLvl: 3 },
+            { name: "Challenger 2", speed: 2.8, armor: 140, color: "#8b5cf6", minLvl: 4 }
+        ];
+
+        let currentTankIdx = 0;
+        let playerStats = { kills: 0, xp: 0, level: 1 };
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const MAP_SIZE = 3600;
+        let camera = { x: 0, y: 0 };
+        let gameActive = false;
+        let buildings = [], roads = [], trees = [], tanks = [], bullets = [];
+        let player = null;
+        let keys = {}, moveDir = { x: 0, y: 0 }, aimDir = { x: 0, y: 0 }, isTouch = false;
+
+        function updateMenuUI() {
+            document.getElementById("menuSubtitle").innerText = `Nivel ${playerStats.level} - Selecciona tu tanque`;
+            for (let i = 0; i < TANK_PRESETS.length; i++) {
+                const btn = document.getElementById(`btn${i}`);
+                if (playerStats.level >= TANK_PRESETS[i].minLvl) {
+                    btn.classList.remove("locked");
+                    btn.children[1].innerText = "Desbloqueado";
+                    btn.children[1].style.color = "#22c55e";
+                    btn.children[0].innerText = TANK_PRESETS[i].name;
+                } else {
+                    btn.classList.add("locked");
+                }
+            }
+        }
+
+        function renderPreview() {
+            const pCanvas = document.getElementById("previewCanvas");
+            if (!pCanvas) return;
+            const pCtx = pCanvas.getContext("2d");
+            pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+            const preset = TANK_PRESETS[currentTankIdx];
+
+            pCtx.save();
+            pCtx.translate(pCanvas.width / 2, pCanvas.height / 2);
+            pCtx.fillStyle = "#1e293b";
+            pCtx.fillRect(-32, -20, 64, 10);
+            pCtx.fillRect(-32, 10, 64, 10);
+            pCtx.fillStyle = preset.color;
+            pCtx.fillRect(-24, -12, 48, 24);
+            pCtx.strokeStyle = "#fff"; pCtx.lineWidth = 1; pCtx.strokeRect(-24, -12, 48, 24);
+            pCtx.fillStyle = "#334155"; pCtx.fillRect(0, -3, 30, 6);
+            pCtx.fillStyle = preset.color; pCtx.beginPath(); pCtx.arc(0, 0, 12, 0, Math.PI * 2); pCtx.fill(); pCtx.stroke();
+            pCtx.restore();
+        }
+
+        function chooseTank(idx) {
+            if (playerStats.level < TANK_PRESETS[idx].minLvl) return;
+            currentTankIdx = idx;
+            document.getElementById("tankTitle").innerText = TANK_PRESETS[idx].name;
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`btn${i}`);
+                if (i === idx) btn.classList.add("selected");
+                else btn.classList.remove("selected");
+            }
+            renderPreview();
+        }
+
+        function buildMap() {
+            buildings = []; roads = []; trees = [];
+            for (let i = 0; i <= MAP_SIZE; i += 400) {
+                roads.push({ x: i, y: 0, w: 90, h: MAP_SIZE, type: 'v' });
+                roads.push({ x: 0, y: i, w: MAP_SIZE, h: 90, type: 'h' });
+            }
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    if ((r < 2 && c < 2) || (r > 7 && c > 7)) continue;
+                    let bx = c * 360 + 100, by = r * 360 + 100;
+                    if (Math.random() < 0.45) {
+                        buildings.push({ x: bx, y: by, w: 140, h: 140, color: "#1e293b", roof: "#334155" });
+                    } else {
+                        trees.push({ x: bx + 50, y: by + 50, r: 22 });
+                    }
+                }
+            }
+        }
+
+        class Tank {
+            constructor(x, y, team, isPlayer = false, preset = TANK_PRESETS[0]) {
+                this.x = x; this.y = y; this.radius = 22; this.team = team; this.isPlayer = isPlayer;
+                if (isPlayer) {
+                    this.speed = preset.speed; this.maxHp = preset.armor; this.hp = preset.armor;
+                    this.color = preset.color; this.reload = 1800;
+                } else {
+                    this.speed = 3.5 + Math.random() * 1.5;
+                    this.maxHp = 80; this.hp = 80;
+                    this.color = team === 'ally' ? '#3b82f6' : '#ef4444';
+                    this.reload = 2000;
+                }
+                this.damage = 20; this.lastShot = 0;
+                this.angle = 0; this.turretAngle = 0;
+                this.targetX = x; this.targetY = y;
+            }
+
+            update() {
+                if (this.hp <= 0) return;
+
+                if (this.isPlayer) {
+                    let mx = 0, my = 0;
+                    if (keys['KeyW'] || keys['ArrowUp']) my -= 1;
+                    if (keys['KeyS'] || keys['ArrowDown']) my += 1;
+                    if (keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
+                    if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
+
+                    if (moveDir.x !== 0 || moveDir.y !== 0) {
+                        mx = moveDir.x; my = moveDir.y;
+                    }
+
+                    if (mx !== 0 || my !== 0) {
+                        this.angle = Math.atan2(my, mx);
+                        this.x += Math.cos(this.angle) * this.speed;
+                        this.y += Math.sin(this.angle) * this.speed;
+                    }
+
+                    if (aimDir.x !== 0 || aimDir.y !== 0) {
+                        this.turretAngle = Math.atan2(aimDir.y, aimDir.x);
+                        this.shoot();
+                    } else {
+                        this.turretAngle = this.angle;
+                    }
+                } else {
+                    let target = null, minDist = 800;
+                    for (let t of tanks) {
+                        if (t.team !== this.team && t.hp > 0) {
+                            let d = Math.hypot(t.x - this.x, t.y - this.y);
+                            if (d < minDist) { minDist = d; target = t; }
+                        }
+                    }
+
+                    if (target) {
+                        this.turretAngle = Math.atan2(target.y - this.y, target.x - this.x);
+                        if (minDist < 500) this.shoot();
+                        if (minDist > 100) {
+                            this.targetX = target.x; this.targetY = target.y;
+                        }
+                    } else if (Math.hypot(this.targetX - this.x, this.targetY - this.y) < 50) {
+                        this.targetX = Math.random() * MAP_SIZE;
+                        this.targetY = Math.random() * MAP_SIZE;
+                    }
+
+                    let dx = this.targetX - this.x, dy = this.targetY - this.y;
+                    if (Math.hypot(dx, dy) > 10) {
+                        let ta = Math.atan2(dy, dx);
+                        this.angle += (ta - this.angle) * 0.2;
+                        this.x += Math.cos(this.angle) * (this.speed * 0.7);
+                        this.y += Math.sin(this.angle) * (this.speed * 0.7);
+                    }
+                }
+
+                for (let o of tanks) {
+                    if (o !== this && o.hp > 0) {
+                        let dx = this.x - o.x, dy = this.y - o.y, d = Math.hypot(dx, dy);
+                        let minDist = this.radius + o.radius;
+                        if (d < minDist && d > 0) {
+                            let overlap = (minDist - d) / 2;
+                            this.x += (dx / d) * overlap;
+                            this.y += (dy / d) * overlap;
+                            o.x -= (dx / d) * overlap;
+                            o.y -= (dy / d) * overlap;
+                        }
+                    }
+                }
+
+                this.x = Math.max(this.radius, Math.min(MAP_SIZE - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(MAP_SIZE - this.radius, this.y));
+            }
+
+            shoot() {
+                let now = Date.now();
+                if (now - this.lastShot >= this.reload) {
+                    this.lastShot = now;
+                    bullets.push(new Bullet(
+                        this.x + Math.cos(this.turretAngle) * 32,
+                        this.y + Math.sin(this.turretAngle) * 32,
+                        this.turretAngle, this.team, this.damage, this.isPlayer
+                    ));
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                ctx.save();
+                ctx.rotate(this.angle);
+                ctx.fillStyle = "#0f172a";
+                ctx.fillRect(-22, -18, 44, 8);
+                ctx.fillRect(-22, 10, 44, 8);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-18, -12, 36, 24);
+                ctx.restore();
+
+                ctx.save();
+                ctx.rotate(this.turretAngle);
+                ctx.fillStyle = "#334155";
+                ctx.fillRect(0, -3, 28, 6);
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+
+                if (this.hp < this.maxHp) {
+                    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(-18, -28, 36, 4);
+                    ctx.fillStyle = this.team === 'ally' ? "#22c55e" : "#ef4444";
+                    ctx.fillRect(-18, -28, (this.hp / this.maxHp) * 36, 4);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, angle, team, damage, isPlayerShot = false) {
+                this.x = x; this.y = y; this.vx = Math.cos(angle) * 12; this.vy = Math.sin(angle) * 12;
+                this.team = team; this.damage = damage; this.life = 100; this.isPlayerShot = isPlayerShot;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy; this.life--;
+                for (let b of buildings) {
+                    if (this.x > b.x && this.x < b.x + b.w && this.y > b.y && this.y < b.y + b.h) return true;
+                }
+                for (let t of tanks) {
+                    if (t.team !== this.team && t.hp > 0 && Math.hypot(t.x - this.x, t.y - this.y) < t.radius) {
+                        t.hp -= this.damage;
+                        if (t.hp <= 0) {
+                            if (t.isPlayer) {
+                                triggerRespawn();
+                            } else if (this.isPlayerShot && t.team === 'enemy') {
+                                playerStats.kills++;
+                                playerStats.xp += 10;
+                                if (playerStats.xp >= playerStats.level * 40) {
+                                    playerStats.level++;
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                }
+                return this.life <= 0 || this.x < 0 || this.x > MAP_SIZE || this.y < 0 || this.y > MAP_SIZE;
+            }
+            draw() {
+                ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        function triggerRespawn() {
+            const overlay = document.getElementById("respawnOverlay");
+            const timer = document.getElementById("respawnTimer");
+            overlay.style.display = "flex";
+            let count = 3;
+            timer.innerText = count;
+            let interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    timer.innerText = count;
+                } else {
+                    clearInterval(interval);
+                    overlay.style.display = "none";
+                    player.hp = player.maxHp;
+                    player.x = 300; player.y = 300;
+                }
+            }, 1000);
+        }
+
+        function initGame() {
+            document.getElementById("mainMenu").style.display = "none";
+            document.getElementById("gameHUD").style.display = "flex";
+            if (isTouch) document.getElementById("touchControls").style.display = "block";
+
+            buildMap();
+            tanks = []; bullets = [];
+            player = new Tank(300, 300, 'ally', true, TANK_PRESETS[currentTankIdx]);
+            tanks.push(player);
+
+            for (let i = 0; i < 11; i++) tanks.push(new Tank(300 + Math.random() * 400, 300 + Math.random() * 400, 'ally', false));
+            for (let i = 0; i < 12; i++) tanks.push(new Tank(MAP_SIZE - 400 - Math.random() * 400, MAP_SIZE - 400 - Math.random() * 400, 'enemy', false));
+
+            gameActive = true;
+            requestAnimationFrame(loop);
+        }
+
+        function nextMatch() {
+            document.getElementById("winOverlay").style.display = "none";
+            document.getElementById("loseOverlay").style.display = "none";
+            document.getElementById("mainMenu").style.display = "flex";
+            updateMenuUI();
+            renderPreview();
+        }
+
+        function loop() {
+            if (!gameActive) return;
+            if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+                canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            }
+
+            camera.x = Math.max(0, Math.min(MAP_SIZE - canvas.width, player.x - canvas.width / 2));
+            camera.y = Math.max(0, Math.min(MAP_SIZE - canvas.height, player.y - canvas.height / 2));
+
+            ctx.fillStyle = "#15803d"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+
+            roads.forEach(r => {
+                ctx.fillStyle = "#334155";
+                if (r.type === 'v') ctx.fillRect(r.x, 0, r.w, MAP_SIZE);
+                else ctx.fillRect(0, r.y, MAP_SIZE, r.h);
+            });
+
+            buildings.forEach(b => {
+                ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(b.x + 10, b.y + 10, b.w, b.h);
+                ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.w, b.h);
+                ctx.fillStyle = b.roof; ctx.fillRect(b.x + 10, b.y + 10, b.w - 20, b.h - 20);
+            });
+
+            trees.forEach(t => {
+                ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.arc(t.x + 5, t.y + 5, t.r, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#166534"; ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
+            });
+
+            tanks.forEach(t => { t.update(); t.draw(); });
+            bullets = bullets.filter(b => { let dead = b.update(); if (!dead) b.draw(); return !dead; });
+            ctx.restore();
+
+            let remainingEnemies = tanks.filter(t => t.team === 'enemy' && t.hp > 0).length;
+            let remainingAllies = tanks.filter(t => t.team === 'ally' && t.hp > 0).length;
+
+            document.getElementById("allyCount").innerText = remainingAllies;
+            document.getElementById("enemyCount").innerText = remainingEnemies;
+            document.getElementById("playerHp").innerText = `${Math.max(0, player.hp)} / ${player.maxHp}`;
+            document.getElementById("playerKills").innerText = playerStats.kills;
+            document.getElementById("playerXp").innerText = playerStats.xp;
+            document.getElementById("playerLvl").innerText = playerStats.level;
+
+            // Condición de Victoria
+            if (remainingEnemies === 0 && gameActive) {
+                gameActive = false;
+                document.getElementById("winKills").innerText = playerStats.kills;
+                document.getElementById("winXp").innerText = `+${playerStats.kills * 10}`;
+                document.getElementById("winLevel").innerText = playerStats.level;
+                document.getElementById("winOverlay").style.display = "flex";
+                document.getElementById("gameHUD").style.display = "none";
+                document.getElementById("touchControls").style.display = "none";
+            }
+
+            // Condición de Derrota (Si todos los aliados mueren y solo quedas tú o tu equipo cae por completo)
+            if (remainingAllies === 0 && gameActive) {
+                gameActive = false;
+                document.getElementById("loseKills").innerText = playerStats.kills;
+                document.getElementById("loseOverlay").style.display = "flex";
+                document.getElementById("gameHUD").style.display = "none";
+                document.getElementById("touchControls").style.display = "none";
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener("keydown", e => keys[e.code] = true);
+        window.addEventListener("keyup", e => keys[e.code] = false);
+        window.addEventListener("touchstart", () => isTouch = true, { once: true });
+
+        function setupStick(zoneId, knobId, callback) {
+            const zone = document.getElementById(zoneId);
+            const knob = document.getElementById(knobId);
+            let activeId = null;
+
+            zone.addEventListener("touchstart", e => {
+                e.preventDefault();
+                let t = e.changedTouches[0];
+                activeId = t.identifier;
+                update(t);
+            }, { passive: false });
+
+            zone.addEventListener("touchmove", e => {
+                e.preventDefault();
+                for (let t of e.changedTouches) {
+                    if (t.identifier === activeId) update(t);
+                }
+            }, { passive: false });
+
+            const end = e => {
+                for (let t of e.changedTouches) {
+                    if (t.identifier === activeId) {
+                        activeId = null;
+                        knob.style.left = "50%"; knob.style.top = "50%";
+                        callback(0, 0);
+                    }
+                }
+            };
+            zone.addEventListener("touchend", end);
+            zone.addEventListener("touchcancel", end);
+
+            function update(t) {
+                let rect = zone.getBoundingClientRect();
+                let cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+                let dx = t.clientX - cx, dy = t.clientY - cy;
+                let maxR = rect.width / 2, dist = Math.hypot(dx, dy);
+                if (dist > maxR) { dx = (dx / dist) * maxR; dy = (dy / dist) * maxR; }
+                knob.style.left = `${50 + (dx / maxR) * 50}%`;
+                knob.style.top = `${50 + (dy / maxR) * 50}%`;
+                callback(dx / maxR, dy / maxR);
+            }
+        }
+
+        setupStick("moveZone", "moveKnob", (x, y) => { moveDir.x = x; moveDir.y = y; });
+        setupStick("aimZone", "aimKnob", (x, y) => { aimDir.x = x; aimDir.y = y; });
+
+        updateMenuUI();
+        renderPreview();
+    </script>
+</body>
+</html>
